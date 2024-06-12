@@ -4,19 +4,31 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 
+void stack_dump(void){    uint64_t *stack_ptr;
+    printk(KERN_INFO "Dumping stack contents:\n");
+
+    // í˜„ìž¬ ìŠ¤íƒ í¬ì¸í„°ë¥¼ ì–»ìŒ
+    __asm__ volatile (       
+    	"pushfq\n\t"                  
+        "popq %%rax\n\t"
+        "movq %%rax, %0\n\t"     : "=r" (stack_ptr) );
+    
+
+        printk(KERN_INFO "%lx\n", stack_ptr);}
+
 typedef struct {
     uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
     uint64_t rdi, rsi, rbp, rbx, rdx, rcx, rax;
     uint64_t rip, rsp;
     uint64_t rflags;
-} __attribute__((packed)) context_t; //x86 64 ¾ÆÅ°ÅØÃÄÀÇ cpu ·¹Áö½ºÅÍµéÀÇ Á¤º¸¸¦ ÀúÀåÇÏ±âÀ§ÇÑ ±¸Á¶Ã¼(³ªÁß¿¡ ±¸ÇöÇÒ task ±¸Á¶Ã¼ÀÇ ÀÏºÎ)
+} __attribute__((packed)) context_t; 
 
-static context_t* thread1_ctx; //ÄÁÅØ½ºÆ® ½ºÀ§ÄªÀ» ½ÇÇèÇÏ±âÀ§ÇÑ thread1
+static context_t* thread1_ctx; 
 static context_t* thread2_ctx;
-static uint8_t* stack1; //thread1¿¡ ÇÒ´çµÉ stack °ø°£(sp)
+static uint8_t* stack1; 
 static uint8_t* stack2;
 
-void load_context(context_t* ctx) {//¸Ç Ã³À½ thraed1À» ½ÃÀÛÇÏ±âÀ§ÇÑ ÇÔ¼ö
+void load_context(context_t* ctx) {
     if (!ctx) {
         printk(KERN_ERR "Invalid context pointer\n");
         return;
@@ -24,10 +36,11 @@ void load_context(context_t* ctx) {//¸Ç Ã³À½ thraed1À» ½ÃÀÛÇÏ±âÀ§ÇÑ ÇÔ¼ö
 
     printk(KERN_INFO "Loading context: \n");
     __asm__ volatile (
-        "movq 0x88(%0), %%rax\n\t"
+        "movq 0x80(%0), %%rsp\n\t"
+        //"movq 0x88(%0), %%r8\n\t"
+        "orq $0x200, %%rax\n\t"
         "pushq %%rax\n\t"
         "popfq\n\t"
-        "movq 0x80(%0), %%rsp\n\t"
         /* "movq 0x70(%0), %%rax\n\t"
          "movq 0x68(%0), %%rcx\n\t"
          "movq 0x60(%0), %%rdx\n\t"
@@ -49,7 +62,7 @@ void load_context(context_t* ctx) {//¸Ç Ã³À½ thraed1À» ½ÃÀÛÇÏ±âÀ§ÇÑ ÇÔ¼ö
         );
 }
 
-void switch_context(context_t* old_ctx, context_t* new_ctx) {//ÄÁÅØ½ºÆ® ½ºÀ§ÄªÀ» ÇÒ ÇÔ¼ö
+void switch_context(context_t* old_ctx, context_t* new_ctx) {
     printk(KERN_INFO "Switching context from %px to %px\n", old_ctx, new_ctx);
 
     __asm__ volatile (
@@ -75,11 +88,10 @@ void switch_context(context_t* old_ctx, context_t* new_ctx) {//ÄÁÅØ½ºÆ® ½ºÀ§ÄªÀ»
         "movq %%rax, 0x78(%0)\n\t"     // Save it to old_ctx->rip
         "movq %1, %%rax\n\t"           // Load new_ctx address into rax
 
-
+        "movq 0x80(%%rax), %%rsp\n\t"     // Restore stack pointer from new_ctx->rsp
         "movq 0x88(%%rax), %%rbx\n\t"  // Move flags from new_ctx->rflags to rbx temporarily
         "pushq %%rbx\n\t"              // Push rbx (flags) to the stack
         "popfq\n\t"
-        "movq 0x80(%%rax), %%rsp\n\t"     // Restore stack pointer from new_ctx->rsp
         "movq 0x58(%%rax), %%rbx\n\t"
         "movq 0x68(%%rax), %%rcx\n\t"
         "movq 0x60(%%rax), %%rdx\n\t"
@@ -101,35 +113,47 @@ void switch_context(context_t* old_ctx, context_t* new_ctx) {//ÄÁÅØ½ºÆ® ½ºÀ§ÄªÀ»
 }
 
 
-void thread1(void) {//ÄÁÅØ½ºÆ® ½ºÀ§ÄªÀ» ÇÒ thraed1
+void thread1(void) {
+uint64_t *stack_ptr;
+    asm volatile("sti\n\t");
     int count = 0;
     while (count < 20) {
+    __asm__ volatile (       
+    	"pushfq\n\t"                  
+        "popq %%rax\n\t"
+        "movq %%rax, %0\n\t"     : "=r" (stack_ptr) );
+        printk(KERN_INFO "%lx\n", stack_ptr);
+        
+    printk(KERN_INFO "%lx\n", (void*)thread1_ctx->rflags);
         printk(KERN_INFO "Thread 1 is running (%d)\n", count + 1);
-        msleep(100);  // 0.1ÃÊ µô·¹ÀÌ
-        switch_context(thread1_ctx, thread2_ctx);//thread2·Î context switching
+        msleep(100);  
+        switch_context(thread1_ctx, thread2_ctx);
         count++;
     }
 }
 
 void thread2(void) {
+    asm volatile("sti\n\t");
     int count = 0;
     while (count < 20) {
+        stack_dump();
+        printk(KERN_INFO "%lsx\n", (void*)thread2_ctx->rflags);
         printk(KERN_INFO "Thread 2 is running (%d)\n", count + 1);
-        msleep(100);  // 0.1ÃÊ µô·¹ÀÌ
-        switch_context(thread2_ctx, thread1_ctx);//thread1·Î context switching
+        msleep(100);  
+        switch_context(thread2_ctx, thread1_ctx);
         count++;
     }
 }
 
-static int __init mymodule_init(void) {//¸®´ª½º Ä¿³Î ¸ðµâÀÇ ÃÊ±âÈ­ Ä¿³Î ¸ðµâÀÇmainÇÔ¼ö¶ó°í º¼ ¼ö ÀÖÀ½
+static int __init mymodule_init(void) {
     printk(KERN_INFO "Module initialized\n");
 
-    stack1 = kmalloc(4096, GFP_KERNEL);//stack1¿¡ ¸Þ¸ð¸® ÇÒ´ç
+    stack1 = kmalloc(4096, GFP_KERNEL);
     stack2 = kmalloc(4096, GFP_KERNEL);
-    thread1_ctx = kmalloc(sizeof(context_t), GFP_KERNEL);//thread1ÀÇ task ±¸Á¶Ã¼ÀÇ ¸Þ¸ð¸® ÇÒ´ç
+    thread1_ctx = kmalloc(sizeof(context_t), GFP_KERNEL); 
     thread2_ctx = kmalloc(sizeof(context_t), GFP_KERNEL);
 
-    if (!stack1 || !stack2 || !thread1_ctx || !thread2_ctx) {//ÇÒ´ç ½ÇÆÐÇÏ¸é Á¾·á
+    if (!stack1 || !stack2 || !thread1_ctx || !thread2_ctx) {
         printk(KERN_ERR "Failed to allocate stacks or contexts\n");
         kfree(stack1);
         kfree(stack2);
@@ -138,20 +162,17 @@ static int __init mymodule_init(void) {//¸®´ª½º Ä¿³Î ¸ðµâÀÇ ÃÊ±âÈ­ Ä¿³Î ¸ðµâÀÇma
         return -ENOMEM;
     }
 
-    // ½ºÅÃ ¸Þ¸ð¸® ÃÊ±âÈ­
+
     memset(stack1, 0, 4096);
     memset(stack2, 0, 4096);
     memset(thread1_ctx, 0, sizeof(context_t));
-    memset(thread2_ctx, 0, sizeof(context_t));//°¢ ¸Þ¸ð¸®°ø°£ 0À¸·Î ÃÊ±âÈ­
-
+    memset(thread2_ctx, 0, sizeof(context_t));
     thread1_ctx->rsp = (uint64_t)(stack1 + 4096);
     thread1_ctx->rip = (uint64_t)thread1;
-    thread1_ctx->rflags = 0x0000000000000202;//thread1ÀÇ ÃÊ±âÈ­, stackÀÇ ¸¶Áö¸·ÁÖ¼Ò ½ÃÀÛ ÇÒ ¸í·É¾îÁÖ¼Ò, ÃÊ±â flag°ª
-
+    thread1_ctx->rflags = 0x0000000000000200;
     thread2_ctx->rsp = (uint64_t)(stack2 + 4096);
     thread2_ctx->rip = (uint64_t)thread2;
-    thread2_ctx->rflags = 0x0000000000000202;//thread2ÀÇ ÃÊ±âÈ­, stackÀÇ ¸¶Áö¸·ÁÖ¼Ò ½ÃÀÛ ÇÒ ¸í·É¾îÁÖ¼Ò , ÃÊ±â flag°ª
-
+    thread2_ctx->rflags = 0x0000000000000200;
 
     printk(KERN_INFO "Initial context for thread1: RIP=%px, RSP=%px\n", (void*)thread1_ctx->rip, (void*)thread1_ctx->rsp);
     printk(KERN_INFO "Initial context for thread2: RIP=%px, RSP=%px\n", (void*)thread2_ctx->rip, (void*)thread2_ctx->rsp);
@@ -167,7 +188,7 @@ static int __init mymodule_init(void) {//¸®´ª½º Ä¿³Î ¸ðµâÀÇ ÃÊ±âÈ­ Ä¿³Î ¸ðµâÀÇma
         return -EINVAL;
     }
 
-    load_context(thread1_ctx);//thread1 ½ÃÀÛ
+    load_context(thread1_ctx);
 
     return 0;
 }

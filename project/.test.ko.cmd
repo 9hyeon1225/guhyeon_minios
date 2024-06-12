@@ -1,0 +1,1 @@
+savedcmd_/home/guhyeon/test/tasktest/test.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/guhyeon/test/tasktest/test.ko /home/guhyeon/test/tasktest/test.o /home/guhyeon/test/tasktest/test.mod.o;  make -f ./arch/x86/Makefile.postlink /home/guhyeon/test/tasktest/test.ko

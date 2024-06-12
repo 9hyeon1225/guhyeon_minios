@@ -1,0 +1,1 @@
+savedcmd_/home/guhyeon/test/context_sw_test/test.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/guhyeon/test/context_sw_test/test.ko /home/guhyeon/test/context_sw_test/test.o /home/guhyeon/test/context_sw_test/test.mod.o;  make -f ./arch/x86/Makefile.postlink /home/guhyeon/test/context_sw_test/test.ko
